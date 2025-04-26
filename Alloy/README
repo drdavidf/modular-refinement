@@ -1,0 +1,12 @@
+
+id.als			Common definition of resource identifier
+
+set.als			An abstract Set 
+a_resman.als		An abstract resource manager that uses Set
+
+chain.als		A linked list representation of sets 
+c_resman.als		A resource manager that uses Chain
+
+refinement.als		Checks that Chain refines Set
+
+chain_consistent.als	Checks that ensure the chain operations preserve its invariant and that the operations are consistent

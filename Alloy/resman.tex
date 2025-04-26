@@ -1,0 +1,546 @@
+\documentclass{article}
+\usepackage{zed-csp}
+\title{Illustrating modular refinement}
+\author{David Faitelson}
+\begin{document}
+\maketitle
+
+\section{Introduction}
+
+This document describes a development of a simple resource manager in a
+modular style. I have selected an extremely simple system so that the
+modular development technique will be as clear as possible.
+
+The development is bottom-up. We start with primitive systems of sets
+and chains. Then we prove that a chain system refines a set system. Next
+we use these subsystems to construct two descriptions of the resource
+manager. An abstract version using sets, and a concrete version using
+chains.
+
+Because we construct both systems by using compatible operations and
+because we have shown that chains refine sets we do not have to prove
+that the concrete resource manager refines the abstract resource manager.
+
+The chain subsystem is based on a similar chain described in the book
+Using Z. However it is not an exact copy, most notably we do not use a
+state variable to hold the last item in the chain, and the development
+of the remove operation is more direct (we do not provide a pop operation
+and thus do not use it when describing the remove operation).
+
+\section{Sets}
+
+Let $ID$ be a non empty finite set of natural numbers. We will reserve $0$ for
+our own purposes. Thus we must ensure that it is available in $ID$
+but we will never accept it as a valid resource identifier in our sets.
+
+\begin{axdef}
+	ID : \finset \nat
+\where
+	0 \in ID 
+\end{axdef}
+
+A set subsystem has a set of (non-zero) resource identifiers:
+
+\begin{schema}{Set}
+	items: \finset ID 
+\where
+	0 \notin items
+\end{schema}
+
+\begin{axdef}
+	Set\_items : Set \fun \finset ID
+\where
+	\forall s : Set @ \\
+\t1 		Set\_items~s = s.items 
+\end{axdef}
+
+We may initialize a set either to be empty or to contain all the
+identifiers available to the system.
+
+\begin{schema}{Set\_InitEmpty}
+	Set' 
+\where
+	items' = \emptyset
+\end{schema}
+
+\begin{schema}{Set\_InitFull}
+	Set'
+\where
+	items' = ID \setminus \{ 0 \}
+\end{schema}
+
+We may add or remove identifiers from the set:
+
+\begin{schema}{Set\_Add}
+	\Delta Set \\
+	item?: ID
+\where
+	items' = items \cup \{ item? \} 
+\end{schema}
+
+\begin{schema}{Set\_Remove}
+	\Delta Set \\
+	item?: ID
+\where
+	item? \neq 0 \\
+	items' = items \setminus \{ item? \} 
+\end{schema}
+
+Sometimes the set must remain the same:
+
+\begin{schema}{Set\_Skip}
+	\Xi Set
+\end{schema}
+
+\section{Chains}
+
+A chain is a representation of sets using linked lists. We use 0 to
+indicate an empty chain.
+
+\begin{schema}{Chain}
+	first : ID \\ next : ID \finj ID
+\where
+	first = 0 \implies next = \emptyset \\ next \rres \{ first \}
+	= \emptyset \\ next \neq \emptyset \implies \\
+\t1		\ran (\{ first \} \dres next \star) = \dom next \cup
+\ran next \cup \{ first \} \setminus \{ 0 \} \end{schema}
+
+\begin{schema}{Chain\_Skip}
+	\Xi Chain
+\end{schema}
+
+\subsection{Initialization}
+
+A chain may be initialized with no identifiers or with all the identifiers in the system.
+
+\begin{schema}{Chain\_InitEmpty}
+	Chain'
+\where
+	first' = 0 \\
+	next' = \emptyset 
+\end{schema}
+
+\begin{axdef}
+	Chain\_items : Chain \fun \finset ID
+\where
+	\forall c : Chain @ \\
+\t1 		Chain\_items~c = \dom c.next \cup \ran c.next \cup \{ c.first \} \setminus \{ 0 \}
+\end{axdef}
+
+\begin{schema}{Chain\_InitFull}
+	Chain'
+\where
+	Chain\_items~\theta Chain' = ID \setminus \{ 0 \}
+\end{schema}
+
+\subsection{Adding items}
+
+To add an identifier to a chain we need to consider two cases. When the chain is empty we set $first$ to the requested identifier but don't change $next$. 
+
+\begin{schema}{Chain\_AddWhenEmpty}
+	\Delta Chain \\
+	item? : ID
+\where
+	item? \neq 0 \\
+	first = 0 \\
+	first' = item? \\
+	next' = next
+\end{schema}
+
+
+When the chain has one or more elements we make the new item stand at the front and link it to the previous first element. 
+
+\begin{schema}{Chain\_AddWhenNotEmpty}
+	\Delta Chain \\
+	item? : ID 
+\where
+	item? \neq 0 \\
+	first \neq 0 \\
+	first' = item? \\
+	next' = next \cup  \{ item? \mapsto first \}
+\end{schema}
+
+Thus adding an item to the chain is either adding it to an empty chain or to a nnon empty chain:
+
+\begin{zed}
+Chain\_Add \defs Chain\_AddWhenEmpty \lor Chain\_AddWhenNotEmpty
+\end{zed}
+
+\subsection{Removing items}
+
+Removing an item from a chain requires considering several distinct cases. 
+
+First, the item to be removed may be the single item in the chain. In this case the chain becomes empty. 
+
+\begin{schema}{Chain\_Remove\_Singleton}
+	\Delta Chain \\
+	item? : ID 
+\where
+	item? \neq 0 \\
+	first = item? \\
+	next = \emptyset \\
+	first' = 0 \\
+	next' = next 
+\end{schema}
+
+Next, the item may be the first in a non empty chain.
+
+\begin{schema}{Chain\_Remove\_First}
+	\Delta Chain \\
+	item? : ID 
+\where
+	item? \neq 0 \\
+	first = item? \\
+	next \neq \emptyset \\
+	first' = next~first \\
+	next' = \{ item? \} \ndres next
+\end{schema}
+
+Next, the item may be in the middle of a non empty chain. That is,
+there will be at least one item before and one item after. In this case
+we must link the item before to the item after.  
+
+\begin{schema}{Chain\_Remove\_Middle}
+	\Delta Chain \\
+	item? : ID
+\where
+	item? \neq 0 \\
+	item? \in \dom next \\
+	item? \in \ran next \\
+
+	first' = first \\
+	next' = \{ item? \} \ndres next \nrres \{ item? \} \cup \{ next\inv ~ item? \mapsto next~item? \} 
+\end{schema}
+
+Finally, we may remove the last item in the chain.
+
+\begin{schema}{Chain\_Remove\_Last}
+	\Delta Chain \\
+	item? : ID 
+\where
+	item? \neq 0 \\
+	item? \notin \dom next \\
+	item? \in \ran next \\
+
+	first' = first \\
+	next' = next \nrres \{ item? \}
+\end{schema}
+
+Finally, to remove an item we combine all of the possible cases:
+
+\begin{zed}
+	Chain\_Remove \defs Chain\_Remove\_Singleton \lor {} \\
+\t1		Chain\_Remove\_First \lor {} \\
+\t1		Chain\_Remove\_Middle \lor {} \\
+\t1		Chain\_Remove\_Last 
+\end{zed}
+
+\section{Refinement}
+
+We show that $Chain$ refines $Set$ using the following functional retrieve relation
+
+\begin{schema}{Retrieve}
+	Set \\
+	Chain
+\where
+	Set\_items~\theta Set = Chain\_items~\theta~Chain
+\end{schema}
+
+It is clear that $Retrieve$ is a function from chains to sets because
+$Chain\_items$ is a function.
+
+\subsection{$Set\_Add$ simulates $Chain\_Add$}
+
+To prove that $Chain\_Add$ refines $Set\_Add$ we consider two cases. First, when the chain is empty $next$ is the empty set and we argue:
+
+\begin{argue}
+	\pre A\_Add \land \Delta Retrieve \land C\_Add \\
+\implies item? \neq 0 \land \{ 0 \} \setminus \{0\} = items \land \{ item? \} \setminus \{ 0\} = items' \\
+\implies items = \emptyset \land items' = \{item?\} \\
+\implies items' = items \cup \{ item? \} \\
+= A\_Add 
+\end{argue}
+
+Next, when the chain is not empty we argue:
+
+\begin{argue}
+	\pre A\_Add \land \Delta Retrieve \land C\_Add \\
+\implies item? \neq 0 \land \dom next \cup \ran next \cup \{ first \} \setminus \{ 0 \} = items \land {} \\
+\t1 \dom (next \cup \{ item? \mapsto first \}) \cup {} \\
+\t1 \ran (next \cup \{ item? \mapsto first \}) \cup \{ item? \} \setminus \{0\} = items' \\
+\implies \dom next \cup \ran next \cup \{ first , item? \} = items' \\
+\t1 \implies \dom next \cup \ran next \cup \{ first \} \setminus \{ 0 \} \cup \{ item? \} = items' \\
+\implies items \cup \{item?\} = items'\\
+= A\_Add
+\end{argue}
+
+\subsection{$Set\_Remove$ simulates $Chain\_Remove$}
+
+We split the proof into four cases, following the structure of $Chain\_Remove$.  
+\subsubsection{Removing the item of a one item chain}
+
+\begin{argue}
+	\pre Set\_Remove \land \Delta Retrieve \land Chain\_Remove\_Singleton \\ 
+\implies item? \neq 0 \land item? = first \land \{ first \} \setminus \{0\} = items \land {} \{ 0 \} \setminus \{ 0\} = items' \\
+\implies items' = items \setminus \{ item? \} \\
+\implies Set\_Remove
+\end{argue}
+
+\subsubsection{Removing the first item}
+
+\begin{argue}
+	\pre Set\_Remove \land \Delta Retrieve \land Chain\_Remove\_First \\
+\implies item? \neq 0 \land item? = first \land \dom next \cup \ran next \cup \{ first \} = items \land {} \\
+\t1 \dom (\{item?\} \ndres next) \cup \ran (\{item?\} \ndres next) \cup \{ next ~first \} = items' \\
+\implies \dom next \setminus \{ first \} \cup \ran next \setminus \{ next~first\} \cup \{ next~first\}  = items' \\
+\implies \dom next \cup \ran next \setminus \{ first \} = items' & $first \notin \ran next$ \\
+\implies items' = items \setminus \{ first \} \\
+\implies Set\_Remove
+\end{argue}
+
+\subsubsection{Removing an item in the middle}
+
+\begin{argue}
+	\pre Set\_Remove \land \Delta Retrieve \land Chain\_Remove\_Middle \\ 
+\implies item? \neq first \land item? \in \dom next \land item? \in \ran next \land {} \\
+\t1  \dom next \cup \ran next \cup \{ first \} = items \land {} \\
+\t1	\dom next \setminus \{ item? \} \cup \ran next \setminus \{item?\} \cup \{ first \} = items' \\
+\implies items' = items \setminus \{ item? \} 
+\end{argue}
+
+The last equality holds because $first \neq item?$. 
+
+\subsubsection{Removing the last item}
+
+\begin{argue}
+	\pre Set\_Remove \land \Delta Retrieve \land Chain\_Remove\_Last \implies Set\_Remove \\
+\implies item? \in \dom next \land item? \notin \ran next \land {} \\
+\t1 	\dom next \cup \ran next \cup \{ first \} = items \land {} \\
+\t1 	\dom (next \nrres \{item?\}) \cup \ran (next \nrres \{item?\}) \cup \{ first \} = items' \\
+\implies \dom (next \setminus \{ next\inv~item? \}) \cup {} \\
+\t1 \ran (next \ setminus \{ next\inv~item? \}) \cup \{first\} = items' \\
+\implies \dom next \setminus \{ next\inv item?\} \cup \ran next \setminus \{ item? \} \cup \{first\} = items' \\
+\implies \dom next \cup \ran next \setminus \{item?\}\cup \{first\} = items' \\
+ & $next\inv~item? \in \ran next$ \\
+\implies (\dom next \cup \ran next \cup \{first\}) \setminus \{item?\}  = items' \\
+& $first \neq item? \land item? \notin \dom next$ \\
+\implies items' = items \setminus \{ item \}
+
+\end{argue}
+
+\section{An abstract resource manager}
+
+\begin{schema}{A\_RM}
+	used : Set \\
+	free : Set 
+\where
+	Set\_items~used \cap Set\_items~free = \emptyset
+\end{schema}
+
+To use the operations we have defined for the $Set$ subsystem we define
+two selection schemas.
+
+\begin{schema}{Select\_Used}
+	\Delta A\_RM \\
+	\Delta Set 
+\where
+	used = \theta Set \\
+	used' = \theta Set' \\
+\end{schema}
+
+\begin{schema}{Select\_Free}
+	\Delta A\_RM \\
+	\Delta Set 
+\where
+	free = \theta Set \\
+	free' = \theta Set'
+\end{schema}
+	
+
+\begin{zed}
+	Used\_Init \defs \exists \Delta Set @ Select\_Used \land Set\_InitEmpty
+\end{zed}
+
+\begin{zed}
+	Used\_Add \defs \exists \Delta Set @ Select\_Used \land Set\_Add
+\end{zed}
+
+\begin{zed}
+	Used\_Remove \defs \exists \Delta Set @ Select\_Used \land Set\_Remove
+\end{zed}
+
+\begin{zed}
+	Used\_Skip \defs \exists \Delta Set @ Select\_Used \land Set\_Skip
+\end{zed}
+
+\begin{zed}
+	Free\_Init \defs \exists \Delta Set @ Select\_Used \land Set\_InitFull
+\end{zed}
+
+\begin{zed}
+	Free\_Add \defs \exists \Delta Set @ Select\_Free \land Set\_Add
+\end{zed}
+
+\begin{zed}
+	Free\_Remove \defs \exists \Delta Set @ Select\_Free \land Set\_Remove
+\end{zed}
+
+It is easy to see that because $Used\_$ and $Free\_$ operate on separate state variables, they are compatible.
+
+\subsection{Initialization}
+
+\begin{schema}{A\_Init}
+	\Delta A\_RM 
+\where
+	Used\_Init \\
+	Free\_Init
+\end{schema}
+
+\subsection{Operations}
+
+\begin{schema}{A\_Acquire}
+	\Delta A\_RM \\
+	item? : ID 
+\where
+	Used\_Add \\
+	Free\_Remove
+\end{schema}
+
+\begin{schema}{A\_Release}
+	\Delta A\_RM \\
+	item? : ID 
+\where
+	Used\_Remove \\
+	Free\_Add
+\end{schema}
+
+\begin{schema}{A\_Dispose}
+	\Delta A\_RM \\
+	item? : ID
+\where
+	Used\_Skip \\
+	Free\_Remove
+\end{schema}
+
+\begin{schema}{A\_Purchase}
+	\Delta A\_RM \\
+	item? : ID
+\where
+	Used\_Skip \\
+	Free\_Add
+\end{schema}
+
+\section{A concrete resource manager}
+
+\begin{schema}{C\_RM}
+	used : Chain \\
+	free : Chain 
+\where
+	Chain\_items~used \cap Chain\_items~free = \emptyset
+\end{schema}
+
+To use the operations we have defined for the $Chain$ subsystem we define
+two selection schemas.
+
+\begin{schema}{C\_Select\_Used}
+	\Delta C\_RM \\
+	\Delta Chain 
+\where
+	used = \theta Chain \\
+	used' = \theta Chain' \\
+\end{schema}
+
+\begin{schema}{C\_Select\_Free}
+	\Delta C\_RM \\
+	\Delta Chain 
+\where
+	free = \theta Chain \\
+	free' = \theta Chain'
+\end{schema}
+	
+\begin{zed}
+	C\_Used\_Init \defs \exists \Delta Chain @ C\_Select\_Used \land Chain\_InitEmpty
+\end{zed}
+
+\begin{zed}
+	C\_Used\_Add \defs \exists \Delta Chain @ C\_Select\_Used \land Chain\_Add
+\end{zed}
+
+\begin{zed}
+	C\_Used\_Remove \defs \exists \Delta Chain @ C\_Select\_Used \land Chain\_Remove
+\end{zed}
+
+\begin{zed}
+	C\_Used\_Skip \defs \exists \Delta Chain @ C\_Select\_Used \land Chain\_Skip
+\end{zed}
+
+\begin{zed}
+	C\_Free\_Init \defs \exists \Delta Chain @ C\_Select\_Used \land Chain\_InitFull
+\end{zed}
+
+\begin{zed}
+	C\_Free\_Add \defs \exists \Delta Chain @ C\_Select\_Free \land Chain\_Add
+\end{zed}
+
+\begin{zed}
+	C\_Free\_Remove \defs \exists \Delta Chain @ C\_Select\_Free \land Chain\_Remove
+\end{zed}
+
+\subsection{Initialization}
+
+\begin{schema}{C\_Init}
+	\Delta C\_RM 
+\where
+	C\_Used\_Init \\
+	C\_Free\_Init
+\end{schema}
+
+\subsection{Operations}
+
+\begin{schema}{C\_Acquire}
+	\Delta C\_RM \\
+	item? : ID 
+\where
+	C\_Used\_Add \\
+	C\_Free\_Remove
+\end{schema}
+
+\begin{schema}{C\_Release}
+	\Delta C\_RM \\
+	item? : ID 
+\where
+	C\_Used\_Remove \\
+	C\_Free\_Add
+\end{schema}
+
+\begin{schema}{C\_Dispose}
+	\Delta C\_RM \\
+	item? : ID
+\where
+	C\_Used\_Skip \\
+	C\_Free\_Remove
+\end{schema}
+
+\begin{schema}{C\_Purchase}
+	\Delta C\_RM \\
+	item? : ID
+\where
+	C\_Used\_Skip \\
+	C\_Free\_Add
+\end{schema}
+
+\section{Conclusion}
+
+The concrete version of the resource manager has the exact same
+structure as the abstract version, indeed with a simple tool it can
+be automatically generated from the abstract description. The concrete
+version is a refinement of the abstract version because the kernel
+operations of both versions are compatible and because the kernel
+operations of the concrete version simulate their corresponding abstract
+versions. The proof effort is concentrated in showing that $Chain$
+refines $Set$. Once we have this building block in place we can use it
+to construct the system with a minimal proof effort, as proving
+compatibility reduces to observing that the operations act on separate
+state variables.
+
+\end{document}
