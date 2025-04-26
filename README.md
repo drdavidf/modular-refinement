@@ -1,6 +1,6 @@
 This repository holds various models that accompany our paper 'modular datat refinement' and the technique described in that paper.
 
-There are three major folders in this repository
+There are three major folders in this repository:
 
 <dl>
 <dt>Audacity</dt>
